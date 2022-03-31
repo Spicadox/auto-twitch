@@ -1,0 +1,26 @@
+# duration in seconds
+# Note twitch api allows up to 800 points per minute
+SLEEP_TIME = 1
+
+# Bearer token must be reissued every 60 days by calling `twitch token`
+BEARER_TOKEN = ""
+CLIENT_ID = ""
+
+WEBHOOK_URL = ""
+
+LOGGING = True
+
+# Twitch username and channel id
+users = [
+    {"sakuramiko_hololive": "557359020"}, {"robocosan_hololive": "778664817"}, {"akaihaato_hololive": "727180335"},
+    {"shirakamifubuki_holo": "783582582"}, {"murasakishionch_hololive": "773041510"}, {"minatoaquach_hololive": "738746247"},
+    {"usadapekora_hololive": "664278586"}, {"tokoyamitowa_holo": "776474056"}, {"himemoriluna_hololive": "765851545"},
+    {"tsunomakiwatame_hololive": "601156893"}, {"amanekanata_hololive": "711217716"},
+    {"momosuzunene_hololive": "715729360"}, {"yukihanalamy_hololive": "770319696"}, {"shishirobotan_hololive": "772565951"},
+    {"laplusdarknesss_hololive": "754246106"}, {"hakuikoyori_hololive": "780178056"}, {"kazamairoha_holo": "784242821"}
+]
+users += [
+    {"ksonsouchou": "149495712"}, {"nakaokadesu": "587762781"}, {"miyuki_umizuki": "610736988"}, {"unacee": "427204160"}
+]
+
+OUTPUT_PATH = ""
