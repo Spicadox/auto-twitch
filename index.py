@@ -88,11 +88,13 @@ if __name__ == "__main__":
                 logger.info(f"{stream['user_login']} is currently {live_status} at {live_url}")
                 live_ids.append(live_id)
 
-                # Download the live stream
-                yt_dlp_args = ['start', 'cmd', '/c', 'yt-dlp', '--no-part', '--embed-metadata']
-                yt_dlp_args += ['-o', f'{output_path}\\{user_name}\\{live_date} - {live_title} ({live_id}).%(ext)s',
-                                live_url]
-                result = subprocess.run(yt_dlp_args, shell=True)
+                # Download using streamlink
+                streamlink_args = ['start', 'cmd', '/c', 'streamlink', '--twitch-disable-reruns', '--twitch-disable-hosting']
+                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4', ]
+                streamlink_args += ['-o', f'{output_path}\\{user_name}\\{live_date} - {live_title} ({live_id}).mp4']
+                streamlink_args += [live_url, 'best']
+                result = subprocess.run(streamlink_args, shell=True)
+                print("", end="\r")
                 logger.info(f"Downloading {live_url}")
                 logger.debug(f"Download Return Code: {result.returncode}")
 
