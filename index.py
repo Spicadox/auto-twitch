@@ -50,7 +50,7 @@ def get_profile_images():
 
 
 def get_profile_image(profile_images, user_login):
-    if profile_images == None:
+    if profile_images is None:
         try:
             profile_images = get_profile_images()
         except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
@@ -61,7 +61,7 @@ def get_profile_image(profile_images, user_login):
         if user_login == image["login"]:
             profile_image = image["profile_image_url"]
             return profile_image
-    if profile_image == None:
+    if profile_image is None:
         return "https://static-cdn.jtvnw.net/ttv-static/404_preview.jpg"
 
 
