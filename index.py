@@ -38,6 +38,33 @@ def loading_text():
             idx = 0
 
 
+def get_profile_images():
+    headers = {'Authorization': f'Bearer {BEARER_TOKEN}',
+               'Client-Id': CLIENT_ID}
+    url = "https://api.twitch.tv/helix/users?"
+    for user in USERS:
+        url = url + f"id={list(user.values())[0]}&"
+    url = url[:-1]
+    images_res = requests.get(url, headers=headers).json()
+    return images_res
+
+
+def get_profile_image(profile_images, user_login):
+    if profile_images == None:
+        try:
+            profile_images = get_profile_images()
+        except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
+            logger.debug(rerror)
+            return "https://static-cdn.jtvnw.net/ttv-static/404_preview.jpg"
+    profile_image = None
+    for image in profile_images["data"]:
+        if user_login == image["login"]:
+            profile_image = image["profile_image_url"]
+            return profile_image
+    if profile_image == None:
+        return "https://static-cdn.jtvnw.net/ttv-static/404_preview.jpg"
+
+
 if __name__ == "__main__":
     logger = create_logger()
     logger.info("Starting program")
@@ -50,7 +77,12 @@ if __name__ == "__main__":
             output_path = output_path[:-1]
     else:
         output_path = os.getcwd()
-
+    try:
+        profile_images = get_profile_images()
+    except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
+        print("", end="\r")
+        logger.debug(rerror)
+        profile_images = None
     downloaded_streams = []
     live_ids = []
     while True:
@@ -79,6 +111,7 @@ if __name__ == "__main__":
 
                 live_id = stream['id']
                 user_name = stream['user_login']
+                profile_image = get_profile_image(profile_images, user_name)
                 live_image = stream['thumbnail_url'].replace("-{width}x{height}", "")
                 live_status = stream['type'] if stream['type'] != '' else 'error'
                 live_title = stream['title']
@@ -88,23 +121,13 @@ if __name__ == "__main__":
                 logger.info(f"{stream['user_login']} is currently {live_status} at {live_url}")
                 live_ids.append(live_id)
 
-                # Download using streamlink
-                streamlink_args = ['start', 'cmd', '/c', 'streamlink', '--twitch-disable-reruns', '--twitch-disable-hosting']
-                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4', ]
-                streamlink_args += ['-o', f'{output_path}\\{user_name}\\{live_date} - {live_title} ({live_id}).mp4']
-                streamlink_args += [live_url, 'best']
-                result = subprocess.run(streamlink_args, shell=True)
-                print("", end="\r")
-                logger.info(f"Downloading {live_url}")
-                logger.debug(f"Download Return Code: {result.returncode}")
-
                 # Send notification to discord webhook
                 if WEBHOOK_URL is not None:
                     message = {"embeds": [{
                         "color": 6570405,
                         "author": {
                             "name": user_name,
-                            "icon_url": live_image
+                            "icon_url": profile_image
                         },
                         "fields": [
                             {
@@ -112,12 +135,26 @@ if __name__ == "__main__":
                                 "value": f"{user_name} is now live at {live_url}"
                             }
                         ],
-                        "thumbnail": {
+                        "image": {
                             "url": live_image
+                        },
+                        "thumbnail": {
+                            "url": profile_image
                         }
                     }]
                     }
                     requests.post(WEBHOOK_URL, json=message)
+
+                # Download using streamlink
+                streamlink_args = ['start', 'cmd', '/k', 'streamlink', '--twitch-disable-reruns', '--twitch-disable-hosting']
+                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4', ]
+                streamlink_args += ['-o', f'{output_path}\\{user_name}\\{live_date} - {live_title} ({live_id}).mp4']
+                streamlink_args += [live_url, 'best']
+                result = subprocess.run(streamlink_args, shell=True)
+
+                print("", end="\r")
+                logger.info(f"Downloading {live_url}")
+                logger.debug(f"Download Return Code: {result.returncode}")
 
                 downloaded_streams.append(live_id)
             # Remove stream ids that are no longer live
