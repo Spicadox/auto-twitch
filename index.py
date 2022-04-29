@@ -38,6 +38,21 @@ def loading_text():
             idx = 0
 
 
+def remove_illegal_characters(title):
+    # Help remove illegal character(s) that streamlink doesn't seem to remove
+    # Replace double quotes with “ which is a Unicode character U+201C “, the LEFT DOUBLE QUOTATION MARK. Note: ” U+201D is a Right Double Quotation Mark
+    # Replace < and > with unicode fullwidth less-than sign and fullwidth less-than sign
+    # Replace : with unicode character U+A789 ꞉ which is a Modifier Letter Colon
+    # Replace / with unicode character U+2215 ⁄ which is a unicode division slash
+    # Replace ? with unicode character U+FF1F ？ which is a fullwidth question mark
+    # Replace \ with unicode character U+29F5 ⧵ which is a Reverse Solidus Operator
+    # Replace * with unicode character U+204E ⁎ which is a Low Asterisk
+    # Replace | with unicode character U+23D0 ⏐ which is a Vertical Line Extension
+    new_title = title.replace('"', '“').replace("<", "＜").replace(">", "＞").replace(":", "꞉").replace("/", "∕")\
+                     .replace("?", "？").replace("\\", "⧵").replace("*", "⁎").replace("|", "⏐")
+    return new_title
+
+
 def get_profile_images():
     headers = {'Authorization': f'Bearer {BEARER_TOKEN}',
                'Client-Id': CLIENT_ID}
@@ -114,7 +129,7 @@ if __name__ == "__main__":
                 profile_image = get_profile_image(profile_images, user_name)
                 live_image = stream['thumbnail_url'].replace("-{width}x{height}", "")
                 live_status = stream['type'] if stream['type'] != '' else 'error'
-                live_title = stream['title']
+                live_title = remove_illegal_characters(stream['title'])
                 live_date = stream['started_at'][:10].replace("-", "")
                 live_url = f"https://www.twitch.tv/{stream['user_login']}"
                 print("", end="\r")
@@ -146,7 +161,7 @@ if __name__ == "__main__":
                     requests.post(WEBHOOK_URL, json=message)
 
                 # Download using streamlink
-                streamlink_args = ['start', 'cmd', '/k', 'streamlink', '--twitch-disable-reruns', '--twitch-disable-hosting']
+                streamlink_args = ['start', 'cmd', '/c', 'streamlink', '--twitch-disable-reruns', '--twitch-disable-hosting']
                 streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4', ]
                 streamlink_args += ['-o', f'{output_path}\\{user_name}\\{live_date} - {live_title} ({live_id}).mp4']
                 streamlink_args += [live_url, 'best']
