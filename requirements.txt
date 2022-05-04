@@ -1,1 +1,3 @@
 requests==2.27.1
+DateTime>=4.4
+python-dotenv==0.20.0
