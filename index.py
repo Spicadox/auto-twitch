@@ -6,13 +6,42 @@ import subprocess
 import const
 import threading
 from log import create_logger
+import dotenv
 
+
+dotenv.load_dotenv()
+dotenv_file = dotenv.find_dotenv()
+
+BEARER_TOKEN = os.getenv("BEARER_TOKEN")
+REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 
 SLEEP_TIME = const.SLEEP_TIME
-BEARER_TOKEN = const.BEARER_TOKEN
-CLIENT_ID = const.CLIENT_ID
 USERS = const.users
 WEBHOOK_URL = const.WEBHOOK_URL
+
+
+def renew_tokens():
+    global BEARER_TOKEN
+    global REFRESH_TOKEN
+    res = requests.post(url="https://id.twitch.tv/oauth2/token",
+                        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                        data={'grant_type': 'refresh_token', 'refresh_token': REFRESH_TOKEN, 'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET}).json()
+    if "status" in res:
+        if res["status"] == 400:
+            print("", end="\r")
+            logger.error(f"HTTP status code {res['status']} {res['error']}: {res['message']}\n Please manually renew and update the tokens")
+            exit()
+        if res["status"] == 401:
+            print("", end="\r")
+            logger.error(f"HTTP status code {res['status']} {res['error']}: {res['message']}\n Please manually renew and update the tokens")
+            exit()
+    logger.debug(res)
+    BEARER_TOKEN = res["access_token"]
+    REFRESH_TOKEN = res["refresh_token"]
+    dotenv.set_key(dotenv_path=dotenv_file, key_to_set="BEARER_TOKEN", value_to_set=BEARER_TOKEN)
+    dotenv.set_key(dotenv_path=dotenv_file, key_to_set="REFRESH_TOKEN", value_to_set=REFRESH_TOKEN)
 
 
 def check_live():
@@ -83,6 +112,7 @@ def get_profile_image(profile_images, user_login):
 if __name__ == "__main__":
     logger = create_logger()
     logger.info("Starting program")
+    renew_tokens()
     threading.Thread(target=loading_text).start()
 
     # Get output path and if it ends with backward slash then remove it
@@ -95,7 +125,6 @@ if __name__ == "__main__":
     try:
         profile_images = get_profile_images()
     except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
-        print("", end="\r")
         logger.debug(rerror)
         profile_images = None
     downloaded_streams = []
@@ -111,9 +140,17 @@ if __name__ == "__main__":
                 logger.error(rerror)
                 continue
 
-            # If Authentication failure or Internal Server Error occurs then recheck for live
+            # On http 400 Authentication failure renew the tokens
             if "status" in res:
-                if res["status"] == 401 or 500:
+                if res["status"] == 401:
+                    print("", end="\r")
+                    logger.error(res["message"])
+                    print("", end="\r")
+                    logger.info("Renewing Tokens...")
+                    renew_tokens()
+                    continue
+                # On http 500 Internal Server Error occurs then recheck for live
+                if res["status"] == 500:
                     print("", end="\r")
                     logger.error(res["message"])
                     continue
