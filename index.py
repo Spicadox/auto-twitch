@@ -1,3 +1,4 @@
+import datetime
 import time
 import os
 import requests
@@ -25,9 +26,12 @@ WEBHOOK_URL = const.WEBHOOK_URL
 def renew_tokens():
     global BEARER_TOKEN
     global REFRESH_TOKEN
-    res = requests.post(url="https://id.twitch.tv/oauth2/token",
-                        headers={'Content-Type': 'application/x-www-form-urlencoded'},
-                        data={'grant_type': 'refresh_token', 'refresh_token': REFRESH_TOKEN, 'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET}).json()
+    try:
+        res = requests.post(url="https://id.twitch.tv/oauth2/token",
+                            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                            data={'grant_type': 'refresh_token', 'refresh_token': REFRESH_TOKEN, 'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET}).json()
+    except requests.exceptions.RequestException:
+        return
     if "status" in res:
         if res["status"] == 400:
             print("", end="\r")
@@ -135,6 +139,9 @@ if __name__ == "__main__":
             try:
                 res = check_live()
                 logger.debug(res)
+            except requests.exceptions.ConnectionError as cError:
+                logger.debug(cError)
+                continue
             except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
                 print("", end="\r")
                 logger.error(rerror)
@@ -143,9 +150,8 @@ if __name__ == "__main__":
             # On http 400 Authentication failure renew the tokens
             if "status" in res:
                 if res["status"] == 401:
-                    print("", end="\r")
-                    logger.error(res["message"])
-                    print("", end="\r")
+                    logger.debug(res["message"])
+                    print(" "*45, end="\r\r")
                     logger.info("Renewing Tokens...")
                     renew_tokens()
                     continue
@@ -164,8 +170,9 @@ if __name__ == "__main__":
                 live_id = stream['id']
                 user_name = stream['user_login']
                 profile_image = get_profile_image(profile_images, user_name)
-                live_image = stream['thumbnail_url'].replace("-{width}x{height}", "")
+                live_image = stream['thumbnail_url'].replace("-{width}x{height}", "") + str(time.time())
                 live_status = stream['type'] if stream['type'] != '' else 'error'
+                playing = stream['game_name']
                 live_title = remove_illegal_characters(stream['title'])
                 live_date = stream['started_at'][:10].replace("-", "")
                 live_url = f"https://www.twitch.tv/{stream['user_login']}"
@@ -183,8 +190,12 @@ if __name__ == "__main__":
                         },
                         "fields": [
                             {
-                                "name": user_name,
-                                "value": f"{user_name} is now live at {live_url}"
+                                "name": live_title,
+                                "value": f"{user_name} is now streaming at {live_url}"
+                            },
+                            {
+                                "name": "Playing",
+                                "value": playing
                             }
                         ],
                         "image": {
@@ -204,7 +215,7 @@ if __name__ == "__main__":
                 streamlink_args += [live_url, 'best']
                 result = subprocess.run(streamlink_args, shell=True)
 
-                print("", end="\r")
+                print(" "*45, end="\r\r")
                 logger.info(f"Downloading {live_url}")
                 logger.debug(f"Download Return Code: {result.returncode}")
 
