@@ -2,12 +2,6 @@
 # Note twitch api allows up to 800 points per minute
 SLEEP_TIME = 1
 
-# Create a .env file with the following key value pair using the .env convention(no quotes) or use the .env.example and rename to .env
-BEARER_TOKEN = ""
-REFRESH_TOKEN = ""
-CLIENT_ID = ""
-CLIENT_SECRET = ""
-
 WEBHOOK_URL = ""
 
 LOGGING = True
