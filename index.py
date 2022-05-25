@@ -1,5 +1,7 @@
 import datetime
+import re
 import time
+from datetime import datetime
 import os
 import requests
 import json
@@ -71,6 +73,20 @@ def loading_text():
             idx = 0
 
 
+def check_file(file_name, streamer, output_path):
+    try:
+        if os.path.isfile(f'{output_path}\\{streamer}\\{file_name}'):
+            #   Check if filename matches the regex meaning filename should be renamed incrementally else just append _1
+            multiple_vid_reg = re.compile("([0-9]{8})( - .* \([0-9]*\)\..{3})")
+            file_re = re.match(pattern=multiple_vid_reg, string=file_name)
+            if file_re is not None:
+                file_name = file_re.group(1) + str(time.strftime("%H%M%S")) + file_re.group(2)
+    except Exception as e:
+        logger.debug(e)
+    finally:
+        return file_name
+
+
 def remove_illegal_characters(title):
     # Help remove illegal character(s) that streamlink doesn't seem to remove
     # Replace double quotes with “ which is a Unicode character U+201C “, the LEFT DOUBLE QUOTATION MARK. Note: ” U+201D is a Right Double Quotation Mark
@@ -131,8 +147,11 @@ if __name__ == "__main__":
     except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
         logger.debug(rerror)
         profile_images = None
-    downloaded_streams = []
-    live_ids = []
+    downloaded_streams = set()
+    live_ids = set()
+    # Sometimes twitter api returns empty list despite stream being live so counter is used to prevent immediate removal
+    # of live streams which causes script to keep redownloading
+    counter = 0
     while True:
         try:
             # Check and get a list of streams that are currently live using Twitch's api
@@ -143,16 +162,14 @@ if __name__ == "__main__":
                 logger.debug(cError)
                 continue
             except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
-                print("", end="\r")
-                logger.error(rerror)
+                logger.debug(rerror)
                 continue
 
             # On http 400 Authentication failure renew the tokens
             if "status" in res:
                 if res["status"] == 401:
                     logger.debug(res["message"])
-                    print(" "*45, end="\r\r")
-                    logger.info("Renewing Tokens...")
+                    logger.debug("Renewing Tokens...")
                     renew_tokens()
                     continue
                 # On http 500 Internal Server Error occurs then recheck for live
@@ -160,6 +177,19 @@ if __name__ == "__main__":
                     print("", end="\r")
                     logger.error(res["message"])
                     continue
+
+            # Remove stream id if the stream is offline
+            try:
+                for live_id in live_ids.copy():
+                    if not any(data_id['id'] == live_id for data_id in res['data']) and counter >= 20:
+                        downloaded_streams.remove(live_id)
+                        live_ids.remove(live_id)
+                        counter = 0
+                    else:
+                        counter += 1
+                        logger.debug(f"Retrying {counter}/20 for {live_id}")
+            except Exception as e:
+                logger.error(e, exc_info=True)
 
             # contains a list of ids that are currently live and used to remove offline stream id in downloaded_streams
             for stream in res['data']:
@@ -172,13 +202,14 @@ if __name__ == "__main__":
                 profile_image = get_profile_image(profile_images, user_name)
                 live_image = stream['thumbnail_url'].replace("-{width}x{height}", "") + str(time.time())
                 live_status = stream['type'] if stream['type'] != '' else 'error'
-                playing = stream['game_name']
-                live_title = remove_illegal_characters(stream['title'])
+                playing = stream['game_name'] if stream['game_name'] != '' else 'Streaming'
+                live_title = remove_illegal_characters(stream['title']) if len(stream['title']) != 0 else remove_illegal_characters(f"{user_name}_{live_status}")
                 live_date = stream['started_at'][:10].replace("-", "")
                 live_url = f"https://www.twitch.tv/{stream['user_login']}"
+                file_name = check_file(f"{live_date} - {live_title} ({live_id}).mp4", user_name, output_path)
                 print("", end="\r")
                 logger.info(f"{stream['user_login']} is currently {live_status} at {live_url}")
-                live_ids.append(live_id)
+                live_ids.add(live_id)
 
                 # Send notification to discord webhook
                 if WEBHOOK_URL is not None:
@@ -209,27 +240,28 @@ if __name__ == "__main__":
                     requests.post(WEBHOOK_URL, json=message)
 
                 # Download using streamlink
-                streamlink_args = ['start', 'cmd', '/c', 'streamlink', '--twitch-disable-reruns', '--twitch-disable-hosting']
-                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4', ]
-                streamlink_args += ['-o', f'{output_path}\\{user_name}\\{live_date} - {live_title} ({live_id}).mp4']
+                streamlink_args = ['start', 'cmd', '/k', 'streamlink', '--twitch-disable-reruns', '--twitch-disable-hosting']
+                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4']
+                streamlink_args += ['--retry-max', '1000']
+                streamlink_args += ['-o', f'{output_path}\\{user_name}\\{file_name}']
                 streamlink_args += [live_url, 'best']
                 result = subprocess.run(streamlink_args, shell=True)
 
-                print(" "*45, end="\r\r")
+                print(" "*45, end="\r")
                 logger.info(f"Downloading {live_url}")
                 logger.debug(f"Download Return Code: {result.returncode}")
-
-                downloaded_streams.append(live_id)
+                counter = 0
+                downloaded_streams.add(live_id)
             # Remove stream ids that are no longer live
-            for stream_id in downloaded_streams:
-                if stream_id not in live_ids:
-                    downloaded_streams.remove(stream_id)
+            # for stream_id in downloaded_streams:
+            #     if stream_id not in live_ids:
+            #         downloaded_streams.remove(stream_id)
             # if len(res['data']) == 0:
             #     logger.info("No streams are currently live...")
 
         except Exception as e:
             print("", end="\r")
-            logger.error(e)
+            logger.error(e, exc_info=True)
         finally:
             try:
                 time.sleep(1)
