@@ -1,8 +1,8 @@
-import datetime
 import re
 import time
-from datetime import datetime
 import os
+from datetime import datetime
+
 import requests
 import json
 import subprocess
@@ -36,11 +36,11 @@ def renew_tokens():
         return
     if "status" in res:
         if res["status"] == 400:
-            print("", end="\r")
+            #print("", end="\r")
             logger.error(f"HTTP status code {res['status']} {res['error']}: {res['message']}\n Please manually renew and update the tokens")
             exit()
         if res["status"] == 401:
-            print("", end="\r")
+            #print("", end="\r")
             logger.error(f"HTTP status code {res['status']} {res['error']}: {res['message']}\n Please manually renew and update the tokens")
             exit()
     logger.debug(res)
@@ -62,11 +62,11 @@ def check_live():
 
 
 def loading_text():
-    loading_string = "[INFO] Waiting for live twitch stream "
+    loading_string = "Waiting for live twitch stream "
     animation = ["     ", ".    ", "..   ", "...  ", ".... ", "....."]
     idx = 0
     while True:
-        print(loading_string + animation[idx % len(animation)], end="\r")
+        print(f"[INFO] {datetime.now().replace(microsecond=0)} | " + loading_string + animation[idx % len(animation)], end="\r")
         time.sleep(0.3)
         idx += 1
         if idx == 6:
@@ -129,6 +129,9 @@ def get_profile_image(profile_images, user_login):
         return "https://static-cdn.jtvnw.net/ttv-static/404_preview.jpg"
 
 
+# TODO check if this endpoint tells whether live stream is going ot be archived or not
+# https://api.twitch.tv/helix/videos?user_id=754246106 where ID of the stream that the video originated from if the type is "archive". Otherwise you get {'data': [], 'pagination': {}} if its not archived
+
 if __name__ == "__main__":
     logger = create_logger()
     logger.info("Starting program")
@@ -174,20 +177,26 @@ if __name__ == "__main__":
                     continue
                 # On http 500 Internal Server Error occurs then recheck for live
                 if res["status"] == 500:
-                    print("", end="\r")
-                    logger.error(res["message"])
+                    logger.debug(res)
+                    logger.error("500 Internal Server Error")
                     continue
 
             # Remove stream id if the stream is offline
+            # TODO LET USER CHOOSE RETRY COUNTER
             try:
                 for live_id in live_ids.copy():
-                    if not any(data_id['id'] == live_id for data_id in res['data']) and counter >= 20:
+                    still_live = any(data_id['id'] == live_id for data_id in res['data'])
+                    if still_live:
+                        continue
+                    elif counter >= 60:
                         downloaded_streams.remove(live_id)
                         live_ids.remove(live_id)
+                        print(" "*70, end='\n')
+                        logger.info(f"{live_id} is now offline{' '*10}")
                         counter = 0
                     else:
                         counter += 1
-                        logger.debug(f"Retrying {counter}/20 for {live_id}")
+                        logger.debug(f"Retrying potential offline stream removal {counter}/60 for {live_id}")
             except Exception as e:
                 logger.error(e, exc_info=True)
 
@@ -200,15 +209,16 @@ if __name__ == "__main__":
                 live_id = stream['id']
                 user_name = stream['user_login']
                 profile_image = get_profile_image(profile_images, user_name)
-                live_image = stream['thumbnail_url'].replace("-{width}x{height}", "") + str(time.time())
+                # Maybe if caching is an issue append ?rnd=UNIXTIMESTAMP instead of timestamp?timestamp
+                live_image = stream['thumbnail_url'].replace("-{width}x{height}", "") + "?rnd=" + str(time.time().__floor__())
                 live_status = stream['type'] if stream['type'] != '' else 'error'
                 playing = stream['game_name'] if stream['game_name'] != '' else 'Streaming'
                 live_title = remove_illegal_characters(stream['title']) if len(stream['title']) != 0 else remove_illegal_characters(f"{user_name}_{live_status}")
                 live_date = stream['started_at'][:10].replace("-", "")
                 live_url = f"https://www.twitch.tv/{stream['user_login']}"
-                file_name = check_file(f"{live_date} - {live_title} ({live_id}).mp4", user_name, output_path)
-                print("", end="\r")
-                logger.info(f"{stream['user_login']} is currently {live_status} at {live_url}")
+                file_name = check_file(f"{live_date} - {live_title} ({live_id}).mkv", user_name, output_path)
+                print(" " * 70, end='\n')
+                logger.info(f"{stream['user_login']} is currently {live_status} at {live_url}/{live_id}")
                 live_ids.add(live_id)
 
                 # Send notification to discord webhook
@@ -225,7 +235,7 @@ if __name__ == "__main__":
                                 "value": f"{user_name} is now streaming at {live_url}"
                             },
                             {
-                                "name": "Playing",
+                                "name": "Category",
                                 "value": playing
                             }
                         ],
@@ -240,15 +250,14 @@ if __name__ == "__main__":
                     requests.post(WEBHOOK_URL, json=message)
 
                 # Download using streamlink
-                streamlink_args = ['start', 'cmd', '/k', 'streamlink', '--twitch-disable-reruns', '--twitch-disable-hosting']
-                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4']
+                logger.info(f"Downloading {live_url}")
+                streamlink_args = ['start', f'auto-twitch {user_name} {live_id}', '/min', 'cmd', '/c', 'streamlink']
+                streamlink_args += ['--quiet', '--twitch-disable-reruns', '--twitch-disable-hosting']
+                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '10']
                 streamlink_args += ['--retry-max', '1000']
                 streamlink_args += ['-o', f'{output_path}\\{user_name}\\{file_name}']
                 streamlink_args += [live_url, 'best']
                 result = subprocess.run(streamlink_args, shell=True)
-
-                print(" "*45, end="\r")
-                logger.info(f"Downloading {live_url}")
                 logger.debug(f"Download Return Code: {result.returncode}")
                 counter = 0
                 downloaded_streams.add(live_id)
@@ -260,13 +269,11 @@ if __name__ == "__main__":
             #     logger.info("No streams are currently live...")
 
         except Exception as e:
-            print("", end="\r")
             logger.error(e, exc_info=True)
         finally:
             try:
                 time.sleep(1)
             except KeyboardInterrupt:
-                print("", end="\r")
                 pass
 
 
