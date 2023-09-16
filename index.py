@@ -57,7 +57,7 @@ def check_live():
     for user in USERS:
         url = url + f"user_id={list(user.values())[0]}&"
     url = url[:-1]
-    res = requests.get(url, headers=headers).json()
+    res = requests.get(url, headers=headers)
     return res
 
 
@@ -152,14 +152,15 @@ if __name__ == "__main__":
         profile_images = None
     downloaded_streams = set()
     live_ids = set()
-    # Sometimes twitter api returns empty list despite stream being live so counter is used to prevent immediate removal
+    # Sometimes twitch api returns empty list despite stream being live so counter is used to prevent immediate removal
     # of live streams which causes script to keep redownloading
     counter = 0
     while True:
         try:
             # Check and get a list of streams that are currently live using Twitch's api
             try:
-                res = check_live()
+                resp = check_live()
+                res = resp.json()
                 logger.debug(res)
             except requests.exceptions.ConnectionError as cError:
                 logger.debug(cError)
@@ -170,6 +171,11 @@ if __name__ == "__main__":
 
             # On http 400 Authentication failure renew the tokens
             if "status" in res:
+                if res["status"] == 400:
+                    logger.error(f"Error 400 {res['error']}{' '*15}")
+                    logger.debug(resp.url)
+                    logger.debug(resp.headers)
+                    continue
                 if res["status"] == 401:
                     logger.debug(res["message"])
                     logger.debug("Renewing Tokens...")
