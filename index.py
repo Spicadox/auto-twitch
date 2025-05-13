@@ -77,7 +77,7 @@ def check_file(file_name, streamer, output_path):
     try:
         if os.path.isfile(f'{output_path}\\{streamer}\\{file_name}'):
             #   Check if filename matches the regex meaning filename should be renamed incrementally else just append _1
-            multiple_vid_reg = re.compile("([0-9]{8})( - .* \([0-9]*\)\..{3})")
+            multiple_vid_reg = re.compile(r"([0-9]{8})( - .* \([0-9]*\)\..{3})")
             file_re = re.match(pattern=multiple_vid_reg, string=file_name)
             if file_re is not None:
                 file_name = file_re.group(1) + str(time.strftime("%H%M%S")) + file_re.group(2)
@@ -258,9 +258,9 @@ if __name__ == "__main__":
                 # Download using streamlink
                 logger.info(f"Downloading {live_url}")
                 streamlink_args = ['start', f'auto-twitch {user_name} {live_id}', '/min', 'cmd', '/c', 'streamlink']
-                streamlink_args += ['--quiet', '--twitch-disable-reruns', '--twitch-disable-hosting']
-                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '10']
-                streamlink_args += ['--retry-max', '1000']
+                streamlink_args += ['--quiet', '--twitch-disable-reruns', '--twitch-disable-hosting', '--twitch-low-latency']
+                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4']
+                streamlink_args += ['--hls-segment-queue-threshold', '0', '--retry-streams', '1', '--retry-max', '100']
                 streamlink_args += ['-o', f'{output_path}\\{user_name}\\{file_name}']
                 streamlink_args += [live_url, 'best']
                 result = subprocess.run(streamlink_args, shell=True)
