@@ -258,8 +258,7 @@ if __name__ == "__main__":
                 # Download using streamlink
                 logger.info(f"Downloading {live_url}")
                 streamlink_args = ['start', f'auto-twitch {user_name} {live_id}', '/min', 'cmd', '/c', 'streamlink']
-                streamlink_args += ['--quiet', '--twitch-disable-reruns', '--twitch-disable-hosting', '--twitch-low-latency']
-                streamlink_args += ['--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4']
+                streamlink_args += ['--twitch-low-latency', '--twitch-disable-ads', '--hls-live-restart', '--stream-segment-threads', '4']
                 streamlink_args += ['--hls-segment-queue-threshold', '0', '--retry-streams', '1', '--retry-max', '100']
                 streamlink_args += ['-o', f'{output_path}\\{user_name}\\{file_name}']
                 streamlink_args += [live_url, 'best']
